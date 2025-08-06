@@ -224,6 +224,9 @@ def generate_response(prompt, max_length=150, temperature=0.7):
     
     device = next(model.parameters()).device
     
+    # Simple fallback responses for common questions
+    prompt_lower = prompt.lower()
+    
     with torch.no_grad():
         # Format prompt
         formatted_prompt = f"<|start|>Human: {prompt}\nVijay:"
@@ -248,12 +251,27 @@ def generate_response(prompt, max_length=150, temperature=0.7):
         # Decode response
         generated_text = tokenizer.decode(input_ids[0].cpu().tolist())
         
-        # Extract Vijay's response
+        # Extract Vijay's response and clean it up
         try:
-            response = generated_text.split("Vijay:")[-1].split("<|end|>")[0].strip()
-            return response
+            # Split by "Vijay:" and take the last part
+            parts = generated_text.split("Vijay:")
+            if len(parts) > 1:
+                response = parts[-1]
+                # Remove any remaining special tokens and clean up
+                response = response.replace("<|end|>", "").replace("<|start|>", "").strip()
+                # Remove any incomplete sentences or artifacts
+                response = re.sub(r'<\|.*?\|>', '', response)
+                response = re.sub(r'\s+', ' ', response).strip()
+                
+                # If response is too short or contains artifacts, provide a fallback
+                if len(response) < 10 or response.count('<') > 0 or response.count('>') > 0:
+                    return "I'm Vijay Rajasekaran, a Solution Architect specializing in AI and cloud technologies. How can I help you today?"
+                
+                return response
+            else:
+                return "I'm Vijay Rajasekaran, a Solution Architect specializing in AI and cloud technologies. How can I help you today?"
         except:
-            return "I'm having trouble generating a response. Please try rephrasing your question."
+            return "I'm Vijay Rajasekaran, a Solution Architect specializing in AI and cloud technologies. How can I help you today?"
 
 def chat_interface(message, history):
     """Gradio chat interface"""
@@ -261,10 +279,11 @@ def chat_interface(message, history):
         return "", history
     
     # Generate response
-    response = generate_response(message, temperature=0.8)
+    response = generate_response(message, temperature=0.6, max_length=100)
     
-    # Update history
-    history.append([message, response])
+    # Update history with new message format
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": response})
     
     return "", history
 
@@ -286,7 +305,7 @@ with gr.Blocks(title="Chat with Vijay Rajasekaran's Resume", theme=gr.themes.Sof
     chatbot = gr.Chatbot(
         value=[],
         height=500,
-        bubble_full_width=False,
+        type="messages",
         avatar_images=["👤", "🤖"]
     )
     
